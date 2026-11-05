@@ -2,6 +2,7 @@
 import { visibleQuestions, isAnswered } from './questions.js';
 import { loadAnswers, saveAnswers, clearAnswers } from './state.js';
 import { assessDetail } from './quality.js';
+import { TARGETS, buildDocument, fileNameFor, answerText } from './builder.js';
 
 const LEVELS = { basico: 'Básico', bom: 'Bom', excelente: 'Excelente' };
 
@@ -12,17 +13,24 @@ const ICONS = {
   clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
   bulb: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.5"/><path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></svg>',
+  alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5M12 16h.01"/></svg>',
 };
 
-const app = document.getElementById('app');
-const state = { screen: 'welcome', index: 0, answers: loadAnswers() };
+const step = (icon, title, text) =>
+  `<li class="step"><span class="step-icon">${ICONS[icon]}</span><span><strong>${title}</strong>${text}</span></li>`;
 
-function show(screen, index = 0) {
+const app = document.getElementById('app');
+// fromReview: a pessoa veio da revisão para ajustar uma resposta; "Continuar" a leva de volta.
+const state = { screen: 'welcome', index: 0, answers: loadAnswers(), fromReview: false };
+
+function show(screen, index = 0, fromReview = false) {
+  state.fromReview = screen === 'question' && (fromReview || state.fromReview);
   state.screen = screen;
   state.index = index;
   if (screen === 'welcome') renderWelcome(app);
   else if (screen === 'question') renderQuestion(app);
-  else renderReview(app, state.answers, (i) => show('question', i));
+  else renderReview(app, state.answers, (i) => show('question', i, true));
   window.scrollTo(0, 0);
   app.querySelector('h1').focus();
 }
@@ -40,8 +48,6 @@ function resumePoint(answers) {
 
 function renderWelcome(root) {
   const saved = visibleQuestions(state.answers).some((q) => isAnswered(q, state.answers));
-  const step = (icon, title, text) =>
-    `<li class="step"><span class="step-icon">${ICONS[icon]}</span><span><strong>${title}</strong>${text}</span></li>`;
   root.innerHTML = `
     <section class="card welcome">
       <p class="brand">${ICONS.spark}Criador de Agentes</p>
@@ -117,8 +123,8 @@ function renderQuestion(root) {
       <div class="actions">
         <button type="button" class="btn btn-ghost" data-act="back">Voltar</button>
         <span class="actions-end">
-          ${q.required ? '' : '<button type="button" class="btn btn-ghost" data-act="skip">Pular</button>'}
-          <button type="button" class="btn btn-primary" data-act="next" aria-describedby="next-hint">Continuar</button>
+          ${q.required || state.fromReview ? '' : '<button type="button" class="btn btn-ghost" data-act="skip">Pular</button>'}
+          <button type="button" class="btn btn-primary" data-act="next" aria-describedby="next-hint">${state.fromReview ? 'Voltar à revisão' : 'Continuar'}</button>
         </span>
       </div>
       <p class="next-hint" id="next-hint">Responda esta pergunta para continuar.</p>
@@ -129,7 +135,7 @@ function renderQuestion(root) {
   const canAdvance = () => !q.required || isAnswered(q, state.answers);
   const goNext = () => {
     const visible = visibleQuestions(state.answers);
-    if (state.index + 1 < visible.length) show('question', state.index + 1);
+    if (!state.fromReview && state.index + 1 < visible.length) show('question', state.index + 1);
     else show('review');
   };
 
@@ -239,16 +245,133 @@ function renderQuestion(root) {
   refresh();
 }
 
-// Temporário: a Task 7 substitui por revisão e download do arquivo.
+const LEVEL_TEXT = {
+  basico: 'O essencial está aqui. Seguir as dicas abaixo deixa o agente bem mais certeiro.',
+  bom: 'Bom trabalho! As dicas abaixo podem deixar o agente ainda melhor.',
+  excelente: 'Excelente! O seu agente está muito bem descrito.',
+};
+
 export function renderReview(container, answers, goToQuestion) {
+  const visible = visibleQuestions(answers);
+  const missing = visible.find((q) => q.required && !isAnswered(q, answers));
+  const { score, level, tips } = assessDetail(answers);
+  const titleOf = (id) => visible.find((q) => q.id === id).title;
+  const qButton = (id, label) =>
+    `<button type="button" class="btn btn-ghost btn-sm" data-q="${id}" aria-label="${label}: ${titleOf(id)}">${label}</button>`;
+  let target = 'generico';
+
   container.innerHTML = `
-    <section class="card">
-      <h1 tabindex="-1">Revisão — em construção</h1>
-      <p class="lead">Em breve você vai revisar as respostas e baixar o arquivo aqui.</p>
-      <div class="actions"><button type="button" class="btn btn-primary">Voltar às perguntas</button></div>
-    </section>`;
-  container.querySelector('button').addEventListener('click', () =>
-    goToQuestion(visibleQuestions(answers).length - 1));
+    <div class="review">
+      <section class="card">
+        <p class="brand">${ICONS.spark}Revisão final</p>
+        <h1 tabindex="-1">Seu arquivo está <span class="grad">quase pronto</span></h1>
+        <p class="lead">Confira o nível de detalhe, melhore o que quiser e baixe o arquivo para entregar à sua IA.</p>
+        ${missing ? `<div class="alert" role="alert">${ICONS.alert}<div>
+          <p><strong>Faltam respostas obrigatórias.</strong> Sem elas a IA não consegue montar o agente.</p>
+          <button type="button" class="btn btn-primary" data-q="${missing.id}">Responder: ${missing.title}</button>
+        </div></div>` : ''}
+        <div class="meter meter-review" data-level="${level}">
+          <p>Nível de detalhe: <strong>${LEVELS[level]}</strong></p>
+          <span class="meter-bar" aria-hidden="true"><span class="meter-fill" style="width:${score}%"></span></span>
+          <p class="meter-text">${LEVEL_TEXT[level]}</p>
+        </div>
+        ${tips.length ? `<h2>Como deixar o agente melhor</h2>
+          <ul class="tips">${tips.map((t) => `<li class="tip">${ICONS.bulb}<p><strong>${titleOf(t.questionId)}</strong>${t.text}</p>
+            ${qButton(t.questionId, 'Melhorar')}</li>`).join('')}</ul>` : ''}
+      </section>
+
+      <section class="card" aria-labelledby="file-title">
+        <h2 id="file-title">Seu arquivo</h2>
+        <p class="hint-choice" id="target-hint">Para qual IA você vai entregar? Isso só muda a saudação no começo do texto.</p>
+        <div class="choices" role="group" aria-labelledby="target-hint">
+          ${TARGETS.map((t) => `<button type="button" class="choice" data-target="${t.id}" aria-pressed="${t.id === target}"><span class="tick">${ICONS.check}</span>${t.label}</button>`).join('')}
+        </div>
+        <div class="actions file-actions">
+          <button type="button" class="btn btn-primary btn-icon" data-act="download">${ICONS.download}Baixar arquivo (.md)</button>
+          <button type="button" class="btn btn-ghost btn-icon" data-act="copy">${ICONS.copy}Copiar tudo</button>
+        </div>
+        <p class="copy-status" role="status" aria-live="polite"></p>
+        <pre class="preview" tabindex="0" aria-label="Prévia do arquivo"></pre>
+      </section>
+
+      <section class="card" aria-labelledby="next-title">
+        <h2 id="next-title">E agora? Próximos passos</h2>
+        <ol class="steps">
+          ${step('download', 'Baixe ou copie o arquivo', 'Use os botões acima. O arquivo e o texto copiado são iguais.')}
+          ${step('chat', 'Abra a sua IA', 'ChatGPT, Claude ou Gemini. Comece uma conversa nova.')}
+          ${step('copy', 'Cole o texto na conversa ou anexe o arquivo', 'Cole com Ctrl+V na caixa de mensagem, ou anexe o arquivo pelo clipe, e envie.')}
+          ${step('spark', 'Responda e peça o agente pronto', 'A IA pode fazer algumas perguntas. Responda e, no fim, peça: “Agora me entregue o agente pronto.”')}
+        </ol>
+      </section>
+
+      <section class="card" aria-labelledby="answers-title">
+        <h2 id="answers-title">Suas respostas</h2>
+        <ul class="answers">${visible.map((q) => `<li class="answer">
+          <div><h3>${q.title}</h3><p class="answer-text"></p></div>
+          ${qButton(q.id, isAnswered(q, answers) ? 'Editar' : 'Responder')}</li>`).join('')}</ul>
+      </section>
+
+      <div class="actions">
+        <button type="button" class="btn btn-ghost" data-act="back">Voltar às perguntas</button>
+        <button type="button" class="btn btn-ghost" data-act="restart">Começar outro agente</button>
+      </div>
+    </div>`;
+
+  const $ = (sel) => container.querySelector(sel);
+  const preview = $('.preview');
+  const status = $('.copy-status');
+  const say = (text) => { status.textContent = text; };
+  const update = () => { preview.textContent = buildDocument(answers, target); };
+
+  container.querySelectorAll('.answer-text').forEach((p, i) => {
+    p.textContent = answerText(visible[i], answers) || 'Sem resposta (opcional)';
+    p.classList.toggle('empty', !isAnswered(visible[i], answers));
+  });
+  if (missing) container.querySelectorAll('.file-actions .btn').forEach((b) => { b.disabled = true; });
+
+  $('.choices').addEventListener('click', (e) => {
+    const btn = e.target.closest('.choice');
+    if (!btn) return;
+    target = btn.dataset.target;
+    container.querySelectorAll('.choice').forEach((b) => b.setAttribute('aria-pressed', b === btn));
+    say('');
+    update();
+  });
+
+  $('.review').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    if (btn.dataset.q) goToQuestion(visible.findIndex((q) => q.id === btn.dataset.q));
+    const act = btn.dataset.act;
+    if (act === 'download') {
+      const name = fileNameFor(answers);
+      const url = URL.createObjectURL(new Blob([preview.textContent], { type: 'text/markdown;charset=utf-8' }));
+      const a = Object.assign(document.createElement('a'), { href: url, download: name });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      say(`Arquivo “${name}” baixado. Veja os próximos passos abaixo.`);
+    }
+    if (act === 'copy') {
+      try {
+        await navigator.clipboard.writeText(preview.textContent);
+        say('Copiado! Agora é só colar na conversa com a sua IA.');
+      } catch {
+        preview.focus();
+        getSelection().selectAllChildren(preview);
+        say('Não deu para copiar automaticamente — use Ctrl+C');
+      }
+    }
+    if (act === 'back') goToQuestion(visible.length - 1);
+    if (act === 'restart' && confirm('Apagar todas as respostas e começar outro agente?')) {
+      clearAnswers();
+      state.answers = {};
+      show('welcome');
+    }
+  });
+
+  update();
 }
 
 show('welcome');
