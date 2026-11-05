@@ -41,16 +41,18 @@ test('formatos só aparece quando entrada contém arquivos ou planilhas', () => 
   assert.ok(ids(e(['planilhas'])).includes('formatos'));
 });
 
-test('criterios só aparece quando saida contém nota', () => {
+test('criterios aparece quando saida contém nota ou relatorio, não só texto', () => {
   const s = (choices) => ({ saida: { choices, other: '' } });
   assert.ok(!ids({}).includes('criterios'));
   assert.ok(!ids(s(['lista'])).includes('criterios'));
+  assert.ok(!ids(s(['texto'])).includes('criterios'));
   assert.ok(ids(s(['nota'])).includes('criterios'));
+  assert.ok(ids(s(['relatorio'])).includes('criterios'));
 });
 
-test('visibleQuestions({}) tem 11 perguntas e mantém a ordem de QUESTIONS', () => {
+test('visibleQuestions({}) tem 12 perguntas e mantém a ordem de QUESTIONS', () => {
   const v = visibleQuestions({});
-  assert.equal(v.length, 11);
+  assert.equal(v.length, 12);
   const order = QUESTIONS.map((x) => x.id);
   const pos = v.map((x) => order.indexOf(x.id));
   assert.deepEqual(pos, [...pos].sort((a, b) => a - b));
@@ -77,4 +79,20 @@ test('sanitizeAnswers: tipos errados e ids desconhecidos são descartados', () =
 test('sanitizeAnswers: choices só com strings e other padrão ""', () => {
   assert.deepEqual(sanitizeAnswers({ entrada: { choices: ['texto', 1, null, 'links'], other: 7 } }), { entrada: { choices: ['texto', 'links'], other: '' } });
   assert.deepEqual(sanitizeAnswers({ area: { choices: ['rh'] } }), { area: { choices: ['rh'], other: '' } });
+});
+
+test('variavel é opcional, long e fica entre tarefas e saida', () => {
+  const order = QUESTIONS.map((x) => x.id);
+  assert.equal(q('variavel').required, false);
+  assert.equal(q('variavel').type, 'long');
+  assert.equal(order.indexOf('variavel'), order.indexOf('tarefas') + 1);
+  assert.equal(order.indexOf('saida'), order.indexOf('variavel') + 1);
+  assert.ok(q('variavel').examples.length >= 2 && q('variavel').examples.length <= 4);
+  assert.ok(!/^(Conte|Diga|Imagine)/.test(q('variavel').tip));
+  assert.ok(ids({}).includes('variavel'));
+});
+
+test('dica de regras cobre dados pessoais', () => {
+  assert.match(q('regras').tip, /dados pessoais/);
+  assert.ok(q('regras').examples.length >= 4);
 });

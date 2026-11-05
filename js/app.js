@@ -268,7 +268,7 @@ export function renderReview(container, answers, goToQuestion) {
 
       <section class="card" aria-labelledby="file-title">
         <h2 id="file-title">Seu arquivo</h2>
-        <p class="hint-choice" id="target-hint">Para qual IA você vai entregar? Isso só muda a saudação no começo do texto.</p>
+        <p class="hint-choice" id="target-hint">Para qual IA você vai entregar? Isso ajusta a saudação e o passo a passo final para essa ferramenta.</p>
         <div class="choices" role="group" aria-labelledby="target-hint">
           ${TARGETS.map((t) => `<button type="button" class="choice" data-target="${t.id}" aria-pressed="${t.id === state.target}"><span class="tick">${ICONS.check}</span>${t.label}</button>`).join('')}
         </div>

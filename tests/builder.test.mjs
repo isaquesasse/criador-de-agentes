@@ -44,17 +44,36 @@ test('estrutura protegida contra texto do usuário', () => {
   assert.ok(d.includes('\n\\---\n'));
 });
 
-test('cada alvo muda só a linha de abertura', () => {
-  const op = (id) => TARGETS.find((t) => t.id === id).opening;
-  const c = buildDocument(base, 'claude').replace(op('claude'), '@');
-  const g = buildDocument(base, 'gemini').replace(op('gemini'), '@');
-  assert.equal(c, g);
+// Normaliza a abertura e o ponto 4, que são as únicas partes que dependem do alvo.
+const neutral = (id) => {
+  const t = TARGETS.find((x) => x.id === id);
+  return buildDocument(base, id)
+    .replace(t.opening, '@')
+    .replace(t.howTo, '#');
+};
+
+test('cada alvo muda só a abertura e o ponto 4', () => {
+  assert.equal(neutral('claude'), neutral('gemini'));
+  assert.equal(neutral('chatgpt'), neutral('generico'));
+  assert.equal(neutral('claude'), neutral('chatgpt'));
   assert.ok(buildDocument(base, 'chatgpt').includes('Olá, ChatGPT.'));
+});
+
+test('cada alvo traz o seu passo final e nenhum termo dos outros', () => {
+  const terms = { chatgpt: 'GPT personalizado', claude: 'Projeto', gemini: 'Gem' };
+  for (const t of TARGETS) {
+    const d = buildDocument(base, t.id);
+    assert.ok(d.includes(t.howTo), t.id);
+    assert.ok(d.includes('ou o recurso equivalente'), t.id);
+    for (const [id, term] of Object.entries(terms)) {
+      assert.equal(d.includes(term), id === t.id, t.id + ' / ' + term);
+    }
+  }
 });
 
 test('alvo desconhecido cai no genérico', () => {
   assert.equal(buildDocument(base, 'xyz'), buildDocument(base));
-  assert.ok(buildDocument(base).includes('\nOlá!\n'));
+  assert.ok(buildDocument(base).includes('\nOlá! Preciso da sua ajuda.\n'));
 });
 
 test('fileNameFor', () => {
@@ -79,7 +98,8 @@ test('instruções protegem o pedido em todos os alvos', () => {
     assert.ok(instr.includes('barra invertida'), t.id);
     assert.ok(instr.includes('\\#'), t.id);
     assert.ok(instr.includes('Não invente informações'), t.id);
-    assert.ok(instr.includes('na ferramenta em que a pessoa vai usar o agente'), t.id);
+    assert.ok(instr.includes('Explique, em português simples e passo a passo, como colocar isto em uso: '), t.id);
+    assert.ok(!instr.includes('usar o agente'), t.id);
     assert.ok(!d.includes('nesta ferramenta'), t.id);
     for (const n of ['1. ', '2. ', '3. ', '4. ']) assert.ok(instr.includes('\n' + n), t.id + n);
   }

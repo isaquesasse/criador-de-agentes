@@ -10,7 +10,7 @@ const answer = (x) =>
     ? LONG_TEXT
     : { choices: [x.options[0].value], other: '' };
 
-// Respostas completas, com "arquivos" e "nota" marcados para tornar as 13 perguntas visíveis.
+// Respostas completas, com "arquivos" e "nota" marcados para tornar as 14 perguntas visíveis.
 function fullAnswers() {
   const a = {};
   for (const x of QUESTIONS) a[x.id] = answer(x);
@@ -35,12 +35,12 @@ test('só obrigatórias respondidas com textos curtos: nível basico ou bom e di
     saida: { choices: ['lista'], other: '' },
   };
   const r = assessDetail(a);
-  // 4 respondidas + 2 long curtas (0,5) = 5 de 11 visíveis
-  assert.equal(r.score, 45);
+  // 12 visíveis (com "variavel"); 4 respondidas + 2 long curtas (0,5) = 5 de 12 = 41,7 -> 42
+  assert.equal(r.score, 42);
   assert.equal(r.level, 'basico');
   const ids = r.tips.map((t) => t.questionId);
-  for (const id of ['publico', 'tom', 'conhecimento', 'exemplos', 'regras']) assert.ok(ids.includes(id));
-  assert.equal(r.tips.length, 7);
+  for (const id of ['publico', 'variavel', 'tom', 'conhecimento', 'exemplos', 'regras']) assert.ok(ids.includes(id));
+  assert.equal(r.tips.length, 8);
 });
 
 test('todas as visíveis respondidas com 12+ palavras: score 100, excelente, sem dicas', () => {
@@ -53,7 +53,7 @@ test('long com menos de 12 palavras gera dica "Dá para detalhar mais. ..."', ()
   const a = { ...fullAnswers(), regras: 'Nunca inventar' };
   const r = assessDetail(a);
   assert.deepEqual(r.tips, [{ questionId: 'regras', text: 'Dá para detalhar mais. ' + q('regras').tip }]);
-  assert.equal(r.score, 96); // 12,5 de 13
+  assert.equal(r.score, 96); // 13,5 de 14
   assert.equal(r.level, 'excelente');
 });
 
@@ -61,7 +61,7 @@ test('resposta só com espaços não conta', () => {
   const a = { ...fullAnswers(), tom: { choices: [], other: '   ' }, publico: '   ' };
   const r = assessDetail(a);
   assert.deepEqual(r.tips.map((t) => t.questionId).sort(), ['publico', 'tom']);
-  assert.equal(r.score, 85); // 11 de 13
+  assert.equal(r.score, 86); // 12 de 14
   assert.equal(r.level, 'excelente');
 });
 
