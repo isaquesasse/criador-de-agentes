@@ -1,0 +1,57 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { QUESTIONS, visibleQuestions, isAnswered } from '../js/questions.js';
+
+const q = (id) => QUESTIONS.find((x) => x.id === id);
+const ids = (a) => visibleQuestions(a).map((x) => x.id);
+
+test('todas as perguntas têm id único, title, why e tip não vazios', () => {
+  assert.equal(new Set(QUESTIONS.map((x) => x.id)).size, QUESTIONS.length);
+  for (const x of QUESTIONS) {
+    for (const k of ['title', 'why', 'tip']) assert.ok(x[k].trim(), `${x.id}.${k}`);
+    assert.ok(Array.isArray(x.examples), `${x.id}.examples`);
+  }
+});
+
+test('perguntas single/multi têm options; text/long não têm', () => {
+  for (const x of QUESTIONS) {
+    if (x.type === 'single' || x.type === 'multi') assert.ok(x.options?.length > 0, x.id);
+    else assert.equal(x.options, undefined, x.id);
+  }
+});
+
+test('isAnswered: "   " é falso, "RH" é verdadeiro', () => {
+  assert.equal(isAnswered(q('nome'), { nome: '   ' }), false);
+  assert.equal(isAnswered(q('nome'), {}), false);
+  assert.equal(isAnswered(q('nome'), { nome: 'RH' }), true);
+});
+
+test('isAnswered: choices vazio + other "  " é falso; other "Logística" é verdadeiro', () => {
+  assert.equal(isAnswered(q('area'), { area: { choices: [], other: '  ' } }), false);
+  assert.equal(isAnswered(q('area'), { area: { choices: [] } }), false);
+  assert.equal(isAnswered(q('area'), { area: { choices: [], other: 'Logística' } }), true);
+  assert.equal(isAnswered(q('area'), { area: { choices: ['rh'], other: '' } }), true);
+});
+
+test('formatos só aparece quando entrada contém arquivos ou planilhas', () => {
+  const e = (choices) => ({ entrada: { choices, other: '' } });
+  assert.ok(!ids({}).includes('formatos'));
+  assert.ok(!ids(e(['texto'])).includes('formatos'));
+  assert.ok(ids(e(['arquivos'])).includes('formatos'));
+  assert.ok(ids(e(['planilhas'])).includes('formatos'));
+});
+
+test('criterios só aparece quando saida contém nota', () => {
+  const s = (choices) => ({ saida: { choices, other: '' } });
+  assert.ok(!ids({}).includes('criterios'));
+  assert.ok(!ids(s(['lista'])).includes('criterios'));
+  assert.ok(ids(s(['nota'])).includes('criterios'));
+});
+
+test('visibleQuestions({}) tem 11 perguntas e mantém a ordem de QUESTIONS', () => {
+  const v = visibleQuestions({});
+  assert.equal(v.length, 11);
+  const order = QUESTIONS.map((x) => x.id);
+  const pos = v.map((x) => order.indexOf(x.id));
+  assert.deepEqual(pos, [...pos].sort((a, b) => a - b));
+});
