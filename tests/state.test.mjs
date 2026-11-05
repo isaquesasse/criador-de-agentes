@@ -46,6 +46,22 @@ test('sem storage disponível (null) nada lança', () => {
   assert.doesNotThrow(() => clearAnswers(null));
 });
 
+test('sem argumento de storage e localStorage lançando SecurityError nada lança', () => {
+  const orig = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    get() { throw new Error('SecurityError'); },
+  });
+  try {
+    assert.deepEqual(loadAnswers(), {});
+    assert.doesNotThrow(() => saveAnswers({ a: 1 }));
+    assert.doesNotThrow(() => clearAnswers());
+  } finally {
+    if (orig) Object.defineProperty(globalThis, 'localStorage', orig);
+    else delete globalThis.localStorage;
+  }
+});
+
 test('clearAnswers remove a chave', () => {
   const s = fakeStorage({ [STORAGE_KEY]: '{"a":1}' });
   clearAnswers(s);

@@ -1,26 +1,36 @@
 export const STORAGE_KEY = 'criador-agentes:v1';
 
-// Nunca lança: modo privado, cota cheia ou JSON ruim não podem derrubar o site.
-export function loadAnswers(storage = globalThis.localStorage) {
+// Nunca lança: modo privado, cota cheia, iframe sandbox (ler localStorage já lança) ou JSON ruim
+// não podem derrubar o site. undefined = usa o localStorage global; null = sem storage.
+function resolve(storage) {
+  if (storage !== undefined) return storage;
   try {
-    const data = JSON.parse(storage.getItem(STORAGE_KEY));
+    return globalThis.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function loadAnswers(storage) {
+  try {
+    const data = JSON.parse(resolve(storage).getItem(STORAGE_KEY));
     return data !== null && typeof data === 'object' && !Array.isArray(data) ? data : {};
   } catch {
     return {};
   }
 }
 
-export function saveAnswers(answers, storage = globalThis.localStorage) {
+export function saveAnswers(answers, storage) {
   try {
-    storage.setItem(STORAGE_KEY, JSON.stringify(answers));
+    resolve(storage).setItem(STORAGE_KEY, JSON.stringify(answers));
   } catch {
     // sem persistência: o questionário segue funcionando em memória
   }
 }
 
-export function clearAnswers(storage = globalThis.localStorage) {
+export function clearAnswers(storage) {
   try {
-    storage.removeItem(STORAGE_KEY);
+    resolve(storage).removeItem(STORAGE_KEY);
   } catch {
     // ignorado de propósito
   }
