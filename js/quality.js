@@ -17,7 +17,7 @@ export function assessDetail(answers) {
     const words = answerText(q, answers).split(/\s+/).filter(Boolean).length;
     if (q.type === 'long' && words < MIN_WORDS) {
       earned += 0.5;
-      tips.push({ questionId: q.id, text: 'Conte um pouco mais: ' + q.tip });
+      tips.push({ questionId: q.id, text: 'Dá para detalhar mais. ' + q.tip });
     } else {
       earned += 1;
     }

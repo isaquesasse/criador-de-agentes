@@ -1,8 +1,9 @@
 // Telas do site: boas-vindas, perguntas (uma por vez) e revisão.
-import { visibleQuestions, isAnswered } from './questions.js';
+import { visibleQuestions, isAnswered, sanitizeAnswers } from './questions.js';
 import { loadAnswers, saveAnswers, clearAnswers } from './state.js';
 import { assessDetail } from './quality.js';
 import { TARGETS, buildDocument, fileNameFor, answerText } from './builder.js';
+import { resumePoint, canAdvance, toggleChoice, setOther, setText, addExample } from './flow.js';
 
 const LEVELS = { basico: 'Básico', bom: 'Bom', excelente: 'Excelente' };
 
@@ -21,11 +22,12 @@ const step = (icon, title, text) =>
   `<li class="step"><span class="step-icon">${ICONS[icon]}</span><span><strong>${title}</strong>${text}</span></li>`;
 
 const app = document.getElementById('app');
-// fromReview: a pessoa veio da revisão para ajustar uma resposta; "Continuar" a leva de volta.
-const state = { screen: 'welcome', index: 0, answers: loadAnswers(), fromReview: false };
+// fromReview: a pessoa veio da revisão (Melhorar/Editar) para ajustar uma resposta; "Continuar" a leva de volta.
+// target: IA escolhida na revisão; dura enquanto a página estiver aberta.
+const state = { screen: 'welcome', index: 0, answers: sanitizeAnswers(loadAnswers()), fromReview: false, target: 'generico' };
 
 function show(screen, index = 0, fromReview = false) {
-  state.fromReview = screen === 'question' && (fromReview || state.fromReview);
+  state.fromReview = screen === 'question' && fromReview;
   state.screen = screen;
   state.index = index;
   if (screen === 'welcome') renderWelcome(app);
@@ -35,15 +37,9 @@ function show(screen, index = 0, fromReview = false) {
   app.querySelector('h1').focus();
 }
 
-function setAnswer(id, value) {
-  state.answers = { ...state.answers, [id]: value };
-  saveAnswers(state.answers);
-}
-
-function resumePoint(answers) {
-  const visible = visibleQuestions(answers);
-  const i = visible.findIndex((q) => !isAnswered(q, answers));
-  return i === -1 ? ['review'] : ['question', i];
+function setAnswers(answers) {
+  state.answers = answers;
+  saveAnswers(answers);
 }
 
 function renderWelcome(root) {
@@ -132,7 +128,7 @@ function renderQuestion(root) {
 
   const $ = (sel) => root.querySelector(sel);
   const nextBtn = $('[data-act="next"]');
-  const canAdvance = () => !q.required || isAnswered(q, state.answers);
+  const canGo = () => canAdvance(q, state.answers);
   const goNext = () => {
     const visible = visibleQuestions(state.answers);
     if (!state.fromReview && state.index + 1 < visible.length) show('question', state.index + 1);
@@ -149,12 +145,12 @@ function renderQuestion(root) {
     if ($('#meter-level').textContent !== LEVELS[level]) $('#meter-level').textContent = LEVELS[level];
     $('.meter').dataset.level = level;
     $('.meter-fill').style.width = `${score}%`;
-    nextBtn.disabled = !canAdvance();
-    $('#next-hint').hidden = canAdvance();
+    nextBtn.disabled = !canGo();
+    $('#next-hint').hidden = canGo();
   };
 
   const onEnter = (e) => {
-    if (e.key === 'Enter' && !e.isComposing && canAdvance()) {
+    if (e.key === 'Enter' && !e.isComposing && canGo()) {
       e.preventDefault();
       goNext();
     }
@@ -164,17 +160,15 @@ function renderQuestion(root) {
     const input = $('#answer');
     input.value = state.answers[q.id] ?? '';
     input.addEventListener('input', () => {
-      setAnswer(q.id, input.value);
+      setAnswers(setText(state.answers, q, input.value));
       refresh();
     });
     if (q.type === 'text') input.addEventListener('keydown', onEnter);
     $('.chips').addEventListener('click', (e) => {
       const chip = e.target.closest('.chip');
       if (!chip) return;
-      const ex = q.examples[chip.dataset.ex];
-      const cur = input.value.trim();
-      input.value = q.type === 'long' && cur ? `${cur}\n${ex}` : ex;
-      setAnswer(q.id, input.value);
+      setAnswers(addExample(state.answers, q, q.examples[chip.dataset.ex]));
+      input.value = state.answers[q.id];
       refresh();
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
@@ -193,8 +187,7 @@ function renderQuestion(root) {
     const openOther = (text) => {
       otherBox.hidden = false;
       if (text !== undefined) otherInput.value = text;
-      const { choices } = answer();
-      setAnswer(q.id, { choices: q.type === 'single' ? [] : choices, other: otherInput.value });
+      setAnswers(setOther(state.answers, q, otherInput.value));
       sync();
       otherInput.focus();
     };
@@ -202,7 +195,7 @@ function renderQuestion(root) {
       otherInput.value = answer().other ?? '';
       otherBox.hidden = otherInput.value.trim() === '';
       otherInput.addEventListener('input', () => {
-        setAnswer(q.id, { ...answer(), other: otherInput.value });
+        setAnswers(setOther(state.answers, q, otherInput.value));
         refresh();
       });
       otherInput.addEventListener('keydown', onEnter);
@@ -214,20 +207,16 @@ function renderQuestion(root) {
         if (q.type === 'multi' && !otherBox.hidden) {
           otherBox.hidden = true;
           otherInput.value = '';
-          setAnswer(q.id, { ...answer(), other: '' });
+          setAnswers(setOther(state.answers, q, ''));
           sync();
         } else openOther();
         return;
       }
-      const v = btn.dataset.value;
-      if (q.type === 'single') {
-        if (otherBox) otherBox.hidden = true;
-        if (otherInput) otherInput.value = '';
-        setAnswer(q.id, { choices: [v], other: '' });
-      } else {
-        const { choices, other } = answer();
-        setAnswer(q.id, { choices: choices.includes(v) ? choices.filter((c) => c !== v) : [...choices, v], other });
+      if (q.type === 'single' && otherBox) {
+        otherBox.hidden = true;
+        otherInput.value = '';
       }
+      setAnswers(toggleChoice(state.answers, q, btn.dataset.value));
       sync();
     });
     $('.chips').addEventListener('click', (e) => {
@@ -239,15 +228,15 @@ function renderQuestion(root) {
 
   $('.actions').addEventListener('click', (e) => {
     const act = e.target.closest('button')?.dataset.act;
-    if (act === 'back') state.index === 0 ? show('welcome') : show('question', state.index - 1);
+    if (act === 'back') state.index === 0 ? show('welcome') : show('question', state.index - 1, state.fromReview);
     if (act === 'skip' || act === 'next') goNext();
   });
   refresh();
 }
 
 const LEVEL_TEXT = {
-  basico: 'O essencial está aqui. Seguir as dicas abaixo deixa o agente bem mais certeiro.',
-  bom: 'Bom trabalho! As dicas abaixo podem deixar o agente ainda melhor.',
+  basico: 'O essencial está aqui. Seguir as dicas mais abaixo deixa o agente bem mais certeiro.',
+  bom: 'Bom trabalho! As dicas mais abaixo podem deixar o agente ainda melhor.',
   excelente: 'Excelente! O seu agente está muito bem descrito.',
 };
 
@@ -258,7 +247,6 @@ export function renderReview(container, answers, goToQuestion) {
   const titleOf = (id) => visible.find((q) => q.id === id).title;
   const qButton = (id, label) =>
     `<button type="button" class="btn btn-ghost btn-sm" data-q="${id}" aria-label="${label}: ${titleOf(id)}">${label}</button>`;
-  let target = 'generico';
 
   container.innerHTML = `
     <div class="review">
@@ -275,16 +263,13 @@ export function renderReview(container, answers, goToQuestion) {
           <span class="meter-bar" aria-hidden="true"><span class="meter-fill" style="width:${score}%"></span></span>
           <p class="meter-text">${LEVEL_TEXT[level]}</p>
         </div>
-        ${tips.length ? `<h2>Como deixar o agente melhor</h2>
-          <ul class="tips">${tips.map((t) => `<li class="tip">${ICONS.bulb}<p><strong>${titleOf(t.questionId)}</strong>${t.text}</p>
-            ${qButton(t.questionId, 'Melhorar')}</li>`).join('')}</ul>` : ''}
       </section>
 
       <section class="card" aria-labelledby="file-title">
         <h2 id="file-title">Seu arquivo</h2>
         <p class="hint-choice" id="target-hint">Para qual IA você vai entregar? Isso só muda a saudação no começo do texto.</p>
         <div class="choices" role="group" aria-labelledby="target-hint">
-          ${TARGETS.map((t) => `<button type="button" class="choice" data-target="${t.id}" aria-pressed="${t.id === target}"><span class="tick">${ICONS.check}</span>${t.label}</button>`).join('')}
+          ${TARGETS.map((t) => `<button type="button" class="choice" data-target="${t.id}" aria-pressed="${t.id === state.target}"><span class="tick">${ICONS.check}</span>${t.label}</button>`).join('')}
         </div>
         <div class="actions file-actions">
           <button type="button" class="btn btn-primary btn-icon" data-act="download">${ICONS.download}Baixar arquivo (.md)</button>
@@ -304,6 +289,13 @@ export function renderReview(container, answers, goToQuestion) {
         </ol>
       </section>
 
+      ${tips.length ? `<section class="card" aria-labelledby="tips-title">
+        <h2 id="tips-title">Quer um agente ainda mais detalhado?</h2>
+        <p class="lead">Cada dica abaixo deixa o agente mais certeiro. Clique em “Melhorar”, ajuste a resposta e volte para cá.</p>
+        <ul class="tips">${tips.map((t) => `<li class="tip">${ICONS.bulb}<p><strong>${titleOf(t.questionId)}</strong> ${t.text}</p>
+          ${qButton(t.questionId, 'Melhorar')}</li>`).join('')}</ul>
+      </section>` : ''}
+
       <section class="card" aria-labelledby="answers-title">
         <h2 id="answers-title">Suas respostas</h2>
         <ul class="answers">${visible.map((q) => `<li class="answer">
@@ -321,7 +313,7 @@ export function renderReview(container, answers, goToQuestion) {
   const preview = $('.preview');
   const status = $('.copy-status');
   const say = (text) => { status.textContent = text; };
-  const update = () => { preview.textContent = buildDocument(answers, target); };
+  const update = () => { preview.textContent = buildDocument(answers, state.target); };
 
   container.querySelectorAll('.answer-text').forEach((p, i) => {
     p.textContent = answerText(visible[i], answers) || 'Sem resposta (opcional)';
@@ -332,7 +324,7 @@ export function renderReview(container, answers, goToQuestion) {
   $('.choices').addEventListener('click', (e) => {
     const btn = e.target.closest('.choice');
     if (!btn) return;
-    target = btn.dataset.target;
+    state.target = btn.dataset.target;
     container.querySelectorAll('.choice').forEach((b) => b.setAttribute('aria-pressed', b === btn));
     say('');
     update();
@@ -363,7 +355,7 @@ export function renderReview(container, answers, goToQuestion) {
         say('Não deu para copiar automaticamente — use Ctrl+C');
       }
     }
-    if (act === 'back') goToQuestion(visible.length - 1);
+    if (act === 'back') show('question', visible.length - 1);
     if (act === 'restart' && confirm('Apagar todas as respostas e começar outro agente?')) {
       clearAnswers();
       state.answers = {};

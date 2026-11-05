@@ -2,7 +2,7 @@
 
 const opts = (...pairs) => pairs.map(([value, label]) => ({ value, label }));
 const picked = (answers, id, ...values) =>
-  values.some((v) => answers[id]?.choices?.includes(v));
+  values.some((v) => Array.isArray(answers[id]?.choices) && answers[id].choices.includes(v));
 
 export const QUESTIONS = [
   {
@@ -197,5 +197,22 @@ export function isAnswered(q, answers) {
   const a = answers[q.id];
   if (typeof a === 'string') return a.trim() !== '';
   if (!a) return false;
-  return (a.choices?.length ?? 0) > 0 || (a.other ?? '').trim() !== '';
+  return (Array.isArray(a.choices) && a.choices.length > 0) || (typeof a.other === 'string' && a.other.trim() !== '');
+}
+
+// Respostas salvas vêm de fora (localStorage antigo ou editado): mantém só o que tem o formato certo.
+export function sanitizeAnswers(answers) {
+  const clean = {};
+  for (const q of QUESTIONS) {
+    const a = answers?.[q.id];
+    if (q.type === 'text' || q.type === 'long') {
+      if (typeof a === 'string') clean[q.id] = a;
+    } else if (a && typeof a === 'object' && Array.isArray(a.choices)) {
+      clean[q.id] = {
+        choices: a.choices.filter((c) => typeof c === 'string'),
+        other: typeof a.other === 'string' ? a.other : '',
+      };
+    }
+  }
+  return clean;
 }

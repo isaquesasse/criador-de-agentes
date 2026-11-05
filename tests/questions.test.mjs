@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { QUESTIONS, visibleQuestions, isAnswered } from '../js/questions.js';
+import { QUESTIONS, visibleQuestions, isAnswered, sanitizeAnswers } from '../js/questions.js';
 
 const q = (id) => QUESTIONS.find((x) => x.id === id);
 const ids = (a) => visibleQuestions(a).map((x) => x.id);
@@ -54,4 +54,27 @@ test('visibleQuestions({}) tem 11 perguntas e mantém a ordem de QUESTIONS', () 
   const order = QUESTIONS.map((x) => x.id);
   const pos = v.map((x) => order.indexOf(x.id));
   assert.deepEqual(pos, [...pos].sort((a, b) => a - b));
+});
+
+test('isAnswered e visibleQuestions não quebram com choices em formato errado', () => {
+  assert.equal(isAnswered(q('area'), { area: { choices: 'rh' } }), false);
+  assert.equal(isAnswered(q('area'), { area: 123 }), false);
+  assert.doesNotThrow(() => visibleQuestions({ entrada: { choices: 'arquivos' }, saida: { choices: 5 } }));
+  assert.ok(!ids({ entrada: { choices: 'arquivos' } }).includes('formatos'));
+});
+
+test('sanitizeAnswers: respostas válidas ficam iguais', () => {
+  const a = { nome: 'Leitor', objetivo: 'Ler\ncurrículos', area: { choices: ['rh'], other: '' }, entrada: { choices: [], other: 'Áudios' } };
+  assert.deepEqual(sanitizeAnswers(a), a);
+});
+
+test('sanitizeAnswers: tipos errados e ids desconhecidos são descartados', () => {
+  const a = { nome: 123, entrada: 'texto', area: { choices: 'rh' }, tom: ['formal'], saida: null, publico: { choices: [] }, xyz: 'oi' };
+  assert.deepEqual(sanitizeAnswers(a), {});
+  assert.deepEqual(sanitizeAnswers(null), {});
+});
+
+test('sanitizeAnswers: choices só com strings e other padrão ""', () => {
+  assert.deepEqual(sanitizeAnswers({ entrada: { choices: ['texto', 1, null, 'links'], other: 7 } }), { entrada: { choices: ['texto', 'links'], other: '' } });
+  assert.deepEqual(sanitizeAnswers({ area: { choices: ['rh'] } }), { area: { choices: ['rh'], other: '' } });
 });

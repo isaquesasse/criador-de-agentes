@@ -49,10 +49,10 @@ test('todas as visíveis respondidas com 12+ palavras: score 100, excelente, sem
   assert.deepEqual(assessDetail(a), { score: 100, level: 'excelente', tips: [] });
 });
 
-test('long com menos de 12 palavras gera dica "Conte um pouco mais: ..."', () => {
+test('long com menos de 12 palavras gera dica "Dá para detalhar mais. ..."', () => {
   const a = { ...fullAnswers(), regras: 'Nunca inventar' };
   const r = assessDetail(a);
-  assert.deepEqual(r.tips, [{ questionId: 'regras', text: 'Conte um pouco mais: ' + q('regras').tip }]);
+  assert.deepEqual(r.tips, [{ questionId: 'regras', text: 'Dá para detalhar mais. ' + q('regras').tip }]);
   assert.equal(r.score, 96); // 12,5 de 13
   assert.equal(r.level, 'excelente');
 });
@@ -75,4 +75,14 @@ test('pergunta oculta não entra no cálculo', () => {
   // marcar "arquivos" sem preencher "formatos" passa a gerar dica
   a.entrada = { choices: ['arquivos'], other: '' };
   assert.ok(assessDetail(a).tips.some((t) => t.questionId === 'formatos'));
+});
+
+test('dicas de resposta curta não repetem o verbo da dica da pergunta', () => {
+  const a = { ...fullAnswers(), objetivo: 'Ler', publico: 'RH', tarefas: 'Ler e resumir' };
+  const texts = assessDetail(a).tips.map((t) => t.text);
+  assert.equal(texts.length, 3);
+  for (const t of texts) {
+    assert.ok(t.startsWith('Dá para detalhar mais. '), t);
+    assert.ok(!/^Conte um pouco mais/.test(t), t);
+  }
 });
