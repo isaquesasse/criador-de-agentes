@@ -69,6 +69,7 @@ function renderWelcome(root) {
     if (act === 'restart' && confirm('Apagar todas as respostas e começar de novo?')) {
       clearAnswers();
       state.answers = {};
+      state.target = 'generico';
       show('question', 0);
     }
   });
@@ -359,6 +360,7 @@ export function renderReview(container, answers, goToQuestion) {
     if (act === 'restart' && confirm('Apagar todas as respostas e começar outro agente?')) {
       clearAnswers();
       state.answers = {};
+      state.target = 'generico';
       show('welcome');
     }
   });
