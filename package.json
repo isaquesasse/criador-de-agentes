@@ -1,0 +1,8 @@
+{
+  "name": "criador-de-agentes",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
